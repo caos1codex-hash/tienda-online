@@ -1,0 +1,5 @@
+# robots.txt — TechNova PY
+User-agent: *
+Allow: /
+
+Sitemap: https://caos1codex-hash.github.io/tienda-online/sitemap.xml

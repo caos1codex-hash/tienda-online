@@ -1,0 +1,19 @@
+{
+  "name": "TechNova PY — Tienda Online",
+  "short_name": "TechNova",
+  "description": "Tienda online premium de tecnología en Paraguay",
+  "start_url": "/tienda-online/",
+  "scope": "/tienda-online/",
+  "display": "standalone",
+  "background_color": "#090b14",
+  "theme_color": "#1c5cf5",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/tienda-online/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
