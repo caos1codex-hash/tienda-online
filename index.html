@@ -69,6 +69,23 @@
     </script>
   </head>
   <body>
+    <!--
+      SPA redirect receiver for GitHub Pages.
+      Lee el query string de redirección generado por 404.html y restaura la URL original
+      antes de que React Router tome el control.
+    -->
+    <script type="text/javascript">
+      (function(l) {
+        if (l.search[1] === '/') {
+          var decoded = l.search.slice(1).split('&').map(function(s) {
+            return s.replace(/~and~/g, '&')
+          }).join('?')
+          window.history.replaceState(null, null,
+            l.pathname.slice(0, -1) + decoded + l.hash
+          )
+        }
+      }(window.location))
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
