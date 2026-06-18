@@ -186,10 +186,10 @@ export default function CartDrawer() {
                       <span className="font-semibold">{formatPrice(shipping)}</span>
                     )}
                   </div>
-                  {subtotal > 0 && subtotal < 500000 && (
+                  {subtotal > 0 && subtotal < STORE_INFO.freeShippingMin && (
                     <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
                       <Icon name="truck" className="h-3.5 w-3.5" />
-                      Agregá {formatPrice(500000 - subtotal)} más para envío gratis
+                      Agregá {formatPrice(STORE_INFO.freeShippingMin - subtotal)} más para envío gratis
                     </p>
                   )}
                   <div className="flex justify-between pt-2 border-t border-slate-200 dark:border-slate-800 text-base font-bold text-slate-900 dark:text-white">
