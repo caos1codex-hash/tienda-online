@@ -5,6 +5,8 @@ import App from './App.jsx'
 import { ThemeProvider } from './context/ThemeContext.jsx'
 import { CartProvider } from './context/CartContext.jsx'
 import { ToastProvider } from './context/ToastContext.jsx'
+import { FavoritesProvider } from './context/FavoritesContext.jsx'
+import { RecentlyViewedProvider } from './context/RecentlyViewedContext.jsx'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -13,7 +15,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <ThemeProvider>
         <ToastProvider>
           <CartProvider>
-            <App />
+            <FavoritesProvider>
+              <RecentlyViewedProvider>
+                <App />
+              </RecentlyViewedProvider>
+            </FavoritesProvider>
           </CartProvider>
         </ToastProvider>
       </ThemeProvider>

@@ -3,12 +3,14 @@ import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useTheme } from '../context/ThemeContext.jsx'
 import { useCart } from '../context/CartContext.jsx'
-import { CATEGORIES } from '../data/products'
+import { useFavorites } from '../context/FavoritesContext.jsx'
+import { CATEGORIES, STORE_INFO } from '../data/products'
 import Icon from './Icon.jsx'
 
 export default function Header() {
   const { theme, toggleTheme } = useTheme()
   const { count, cart } = useCart()
+  const { count: favCount } = useFavorites()
   const navigate = useNavigate()
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -57,7 +59,7 @@ export default function Header() {
         <div className="bg-gradient-to-r from-brand-700 via-brand-600 to-accent-600 text-white text-xs font-medium py-2">
           <div className="container-app flex items-center justify-center gap-2 text-center">
             <Icon name="truck" className="h-4 w-4 flex-shrink-0" />
-            <span>Envío GRATIS en compras superiores a Gs. 500.000 · Pagá por WhatsApp · Atención inmediata</span>
+            <span>Envío GRATIS en compras +Gs. 500.000 · Bancard · Visa · Mastercard · Comprá por WhatsApp</span>
           </div>
         </div>
 
@@ -173,6 +175,20 @@ export default function Header() {
                 </AnimatePresence>
               </button>
 
+              {/* Favorites */}
+              <button
+                onClick={() => navigate('/catalogo')}
+                className="relative inline-flex items-center justify-center rounded-lg p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                aria-label={`${favCount} favoritos`}
+              >
+                <Icon name="heart" className="h-5 w-5" />
+                {favCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rose-500 px-0.5 text-[9px] font-bold text-white">
+                    {favCount}
+                  </span>
+                )}
+              </button>
+
               {/* Cart */}
               <button
                 onClick={openCart}
@@ -253,7 +269,7 @@ export default function Header() {
               </nav>
 
               <div className="p-4 border-t border-slate-200 dark:border-slate-800">
-                <a href="https://wa.me/595981103689" target="_blank" rel="noreferrer" className="btn-whatsapp w-full">
+                <a href={STORE_INFO.whatsappLink} target="_blank" rel="noreferrer" className="btn-whatsapp w-full">
                   <Icon name="whatsapp" className="h-5 w-5" />
                   Comprar por WhatsApp
                 </a>

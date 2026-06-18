@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useCart } from '../context/CartContext.jsx'
 import { useToast } from '../context/ToastContext.jsx'
 import { formatPrice, buildWhatsappUrl } from '../utils/format.js'
+import { STORE_INFO } from '../data/products'
 import Icon from './Icon.jsx'
 
 export default function CartDrawer() {

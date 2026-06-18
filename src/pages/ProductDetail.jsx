@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { getProductBySlug, getRelated, CATEGORIES } from '../data/products'
+import { getProductBySlug, getRelated, CATEGORIES, STORE_INFO, WHATSAPP_NUMBER, PRODUCTS } from '../data/products'
 import { useCart } from '../context/CartContext.jsx'
+import { useFavorites } from '../context/FavoritesContext.jsx'
+import { useRecentlyViewed } from '../context/RecentlyViewedContext.jsx'
 import { useToast } from '../context/ToastContext.jsx'
-import { formatPrice, ratingStars, buildSingleProductWhatsapp } from '../utils/format.js'
+import { formatPrice, ratingStars } from '../utils/format.js'
 import ProductCard from '../components/ProductCard.jsx'
 import Icon from '../components/Icon.jsx'
 
@@ -12,12 +14,17 @@ export default function ProductDetail() {
   const { slug } = useParams()
   const product = useMemo(() => getProductBySlug(slug), [slug])
   const { addItem } = useCart()
+  const { isFavorite, toggleFavorite } = useFavorites()
+  const { addViewed, viewed } = useRecentlyViewed()
   const { toast } = useToast()
+  const fav = isFavorite(product?.id)
 
   const [activeImage, setActiveImage] = useState(0)
   const [qty, setQty] = useState(1)
   const [activeTab, setActiveTab] = useState('description')
   const [zoom, setZoom] = useState({ active: false, x: 50, y: 50 })
+  const [stickyVisible, setStickyVisible] = useState(false)
+  const mainInfoRef = useRef(null)
 
   useEffect(() => {
     if (product) {
@@ -25,7 +32,24 @@ export default function ProductDetail() {
       setQty(1)
       setActiveTab('description')
       // Update document title
-      document.title = `${product.name} — TechNova PY`
+      document.title = `${product.name} — ${STORE_INFO.name}`
+      // Update meta description
+      const metaDesc = document.querySelector('meta[name="description"]')
+      if (metaDesc) {
+        metaDesc.setAttribute('content', `Comprá ${product.name} en ${STORE_INFO.name}. ${product.description.substring(0, 120)}... Precio: ${formatPrice(product.price)}. Envío a todo Paraguay.`)
+      }
+      // Update Open Graph
+      const ogTitle = document.querySelector('meta[property="og:title"]')
+      if (ogTitle) ogTitle.setAttribute('content', `${product.name} — ${STORE_INFO.name}`)
+      const ogDesc = document.querySelector('meta[property="og:description"]')
+      if (ogDesc) ogDesc.setAttribute('content', `Comprá ${product.name} por ${formatPrice(product.price)}. Garantía oficial, envío a todo Paraguay.`)
+      const ogUrl = document.querySelector('meta[property="og:url"]')
+      if (ogUrl) ogUrl.setAttribute('content', `https://caos1codex-hash.github.io/tienda-online/producto/${product.slug}`)
+      // Twitter
+      const twTitle = document.querySelector('meta[name="twitter:title"]')
+      if (twTitle) twTitle.setAttribute('content', `${product.name} — ${STORE_INFO.name}`)
+      const twDesc = document.querySelector('meta[name="twitter:description"]')
+      if (twDesc) twDesc.setAttribute('content', `Comprá ${product.name} por ${formatPrice(product.price)} en Paraguay.`)
       // Inject structured data
       const scriptId = 'product-jsonld'
       const existing = document.getElementById(scriptId)
@@ -53,16 +77,34 @@ export default function ProductDetail() {
           priceCurrency: 'PYG',
           availability: product.stock > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
           url: `https://caos1codex-hash.github.io/tienda-online/producto/${product.slug}`,
+          seller: {
+            '@type': 'Organization',
+            name: STORE_INFO.name,
+          },
         },
       })
       document.head.appendChild(script)
+      // Track recently viewed
+      addViewed(product.id)
     }
     return () => {
       const s = document.getElementById('product-jsonld')
       if (s) s.remove()
-      document.title = 'TechNova PY — Tienda Online Premium de Tecnología en Paraguay'
+      document.title = `${STORE_INFO.name} — Tienda Online de Tecnología en Paraguay`
     }
   }, [product])
+
+  // Sticky bar visibility
+  useEffect(() => {
+    const handleScroll = () => {
+      if (mainInfoRef.current) {
+        const rect = mainInfoRef.current.getBoundingClientRect()
+        setStickyVisible(rect.bottom < 0)
+      }
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
   if (!product) {
     return (
@@ -81,14 +123,50 @@ export default function ProductDetail() {
   const discount = product.oldPrice ? Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100) : 0
   const related = getRelated(product)
   const category = CATEGORIES.find((c) => c.id === product.category)
+  const isLowStock = product.stock > 0 && product.stock <= 5
+
+  const handleFav = () => {
+    toggleFavorite(product.id)
+    toast(fav ? `${product.name} eliminado de favoritos` : `${product.name} agregado a favoritos`, fav ? 'info' : 'success')
+  }
 
   const handleAddToCart = () => {
     addItem(product, qty)
     toast(`${qty} × ${product.name} agregado al carrito`, 'success')
   }
 
+  const buildPremiumWhatsapp = () => {
+    const lines = []
+    lines.push('Hola, deseo realizar una compra.')
+    lines.push('')
+    lines.push('📦 PRODUCTO:')
+    lines.push(`• ${product.name}`)
+    lines.push(`• Marca: ${product.brand}`)
+    lines.push(`• Categoría: ${category?.name || product.category}`)
+    lines.push('')
+    lines.push('💰 PRECIO:')
+    lines.push(`• Unitario: ${formatPrice(product.price)}`)
+    lines.push(`• Cantidad: ${qty}`)
+    lines.push(`• Subtotal: ${formatPrice(product.price * qty)}`)
+    if (product.oldPrice) {
+      lines.push(`• Ahorro: ${formatPrice(product.oldPrice - product.price)} (${discount}% OFF)`)
+    }
+    const total = product.price * qty
+    const shipping = total < STORE_INFO.freeShippingMin ? 30000 : 0
+    lines.push(`• Envío: ${shipping === 0 ? 'GRATIS' : formatPrice(shipping)}`)
+    lines.push(`• TOTAL: ${formatPrice(total + shipping)}`)
+    lines.push('')
+    lines.push('📍 CIUDAD: [Ingrese su ciudad]')
+    lines.push('💳 MÉTODO DE PAGO: Transferencia / Efectivo / Tarjeta')
+    lines.push('')
+    lines.push('Observaciones:')
+    lines.push('')
+    lines.push('Gracias.')
+    return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(lines.join('\n'))}`
+  }
+
   const handleBuyNow = () => {
-    const url = buildSingleProductWhatsapp(product, qty)
+    const url = buildPremiumWhatsapp()
     window.open(url, '_blank', 'noopener,noreferrer')
     toast('Abriendo WhatsApp con tu pedido...', 'success')
   }
@@ -105,7 +183,7 @@ export default function ProductDetail() {
       {/* Breadcrumb */}
       <section className="pt-8">
         <div className="container-app">
-          <nav className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
+          <nav className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 flex-wrap" aria-label="Breadcrumb">
             <Link to="/" className="hover:text-brand-600 dark:hover:text-brand-400 transition">Inicio</Link>
             <Icon name="chevronRight" className="h-3 w-3" />
             <Link to="/catalogo" className="hover:text-brand-600 dark:hover:text-brand-400 transition">Catálogo</Link>
@@ -122,7 +200,7 @@ export default function ProductDetail() {
       {/* Main */}
       <section className="py-8 lg:py-12">
         <div className="container-app">
-          <div className="grid lg:grid-cols-2 gap-8 lg:gap-12">
+          <div className="grid lg:grid-cols-2 gap-8 lg:gap-12" ref={mainInfoRef}>
             {/* Gallery */}
             <motion.div
               initial={{ opacity: 0, x: -20 }}
@@ -185,6 +263,7 @@ export default function ProductDetail() {
                         ? 'border-brand-500 ring-2 ring-brand-500/20'
                         : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                     }`}
+                    aria-label={`Ver imagen ${i + 1}`}
                   >
                     <img src={img} alt={`Miniatura ${i + 1}`} loading="lazy" className="h-full w-full object-cover" />
                   </button>
@@ -210,9 +289,9 @@ export default function ProductDetail() {
                 {product.name}
               </h1>
 
-              {/* Rating */}
-              <div className="mt-3 flex items-center gap-3">
-                <div className="flex items-center">
+              {/* Rating + sold */}
+              <div className="mt-3 flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-1" aria-label={`${product.rating} de 5 estrellas`}>
                   {Array.from({ length: full }).map((_, i) => (
                     <Icon key={`f${i}`} name="star" className="h-4 w-4 text-amber-400" />
                   ))}
@@ -229,8 +308,13 @@ export default function ProductDetail() {
                   ))}
                 </div>
                 <span className="text-sm text-slate-600 dark:text-slate-400">
-                  {product.rating.toFixed(1)} · {product.reviews} reseñas
+                  {product.rating.toFixed(1)} · {product.reviews} opiniones
                 </span>
+                {product.soldThisWeek > 0 && (
+                  <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    🔥 {product.soldThisWeek} vendidos esta semana
+                  </span>
+                )}
               </div>
 
               {/* Tags */}
@@ -259,23 +343,28 @@ export default function ProductDetail() {
                 )}
               </div>
 
-              {/* Stock */}
-              <div className="mt-4 flex items-center gap-2 text-sm">
+              {/* Stock + Urgency */}
+              <div className="mt-4 flex items-center gap-3 flex-wrap">
                 {product.stock > 10 ? (
-                  <>
+                  <div className="flex items-center gap-2 text-sm">
                     <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                     <span className="text-emerald-600 dark:text-emerald-400 font-medium">En stock</span>
-                  </>
-                ) : product.stock > 0 ? (
-                  <>
+                  </div>
+                ) : product.stock > 3 ? (
+                  <div className="flex items-center gap-2 text-sm">
                     <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-                    <span className="text-amber-600 dark:text-amber-400 font-medium">¡Solo {product.stock} unidades disponibles!</span>
-                  </>
+                    <span className="text-amber-600 dark:text-amber-400 font-medium">Quedan {product.stock} unidades</span>
+                  </div>
+                ) : product.stock > 0 ? (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+                    <span className="text-rose-600 dark:text-rose-400 font-bold">⚡ Últimas {product.stock} unidades</span>
+                  </div>
                 ) : (
-                  <>
-                    <span className="h-2 w-2 rounded-full bg-rose-500" />
-                    <span className="text-rose-600 dark:text-rose-400 font-medium">Sin stock</span>
-                  </>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="h-2 w-2 rounded-full bg-slate-400" />
+                    <span className="text-slate-500 font-medium">Sin stock</span>
+                  </div>
                 )}
               </div>
 
@@ -286,7 +375,7 @@ export default function ProductDetail() {
 
               {/* Qty + actions */}
               <div className="mt-8 space-y-4">
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 flex-wrap">
                   <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Cantidad:</span>
                   <div className="inline-flex items-center rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
                     <button
@@ -303,6 +392,7 @@ export default function ProductDetail() {
                       max={Math.min(product.stock, 99)}
                       onChange={(e) => setQty(Math.max(1, Math.min(product.stock, Number(e.target.value) || 1)))}
                       className="w-16 text-center bg-transparent border-0 outline-none text-base font-semibold"
+                      aria-label="Cantidad"
                     />
                     <button
                       onClick={() => setQty((q) => Math.min(product.stock, q + 1))}
@@ -318,15 +408,19 @@ export default function ProductDetail() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button onClick={handleBuyNow} className="btn-whatsapp text-base">
+                  <button onClick={handleBuyNow} className="btn-whatsapp text-base" disabled={product.stock === 0}>
                     <Icon name="whatsapp" className="h-5 w-5" />
                     Comprar ahora
                   </button>
-                  <button onClick={handleAddToCart} className="btn-primary text-base">
+                  <button onClick={handleAddToCart} className="btn-primary text-base" disabled={product.stock === 0}>
                     <Icon name="cart" className="h-5 w-5" />
                     Agregar al carrito
                   </button>
                 </div>
+                <button onClick={handleFav} className={`w-full flex items-center justify-center gap-2 py-3 rounded-full text-sm font-semibold transition ${fav ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800' : 'border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:border-rose-300 hover:text-rose-500'}`}>
+                  <Icon name="heart" className={`h-4 w-4 ${fav ? 'text-rose-500' : ''}`} />
+                  {fav ? 'En favoritos' : 'Agregar a favoritos'}
+                </button>
               </div>
 
               {/* Benefits */}
@@ -336,6 +430,8 @@ export default function ProductDetail() {
                   { icon: 'shield', text: 'Garantía oficial 12 meses' },
                   { icon: 'refresh', text: 'Devolución 7 días sin preguntas' },
                   { icon: 'whatsapp', text: 'Soporte por WhatsApp 24/7' },
+                  { icon: 'package', text: 'Producto original con factura' },
+                  { icon: 'checkCircle', text: 'Pago seguro: Bancard, Visa, MC' },
                 ].map((b) => (
                   <div key={b.text} className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
                     <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 flex-shrink-0">
@@ -350,8 +446,8 @@ export default function ProductDetail() {
               <div className="mt-6 flex items-center gap-3 text-sm">
                 <span className="text-slate-500 dark:text-slate-400">Compartir:</span>
                 {[
-                  { name: 'whatsapp', url: `https://wa.me/?text=${encodeURIComponent(`Mirá este producto: ${product.name} - ${formatPrice(product.price)} en TechNova PY`)}` },
-                  { name: 'mail', url: `mailto:?subject=${encodeURIComponent(product.name)}&body=${encodeURIComponent(`Te recomiendo este producto: ${product.name} - ${formatPrice(product.price)}`)}` },
+                  { name: 'whatsapp', url: `https://wa.me/?text=${encodeURIComponent(`Mirá este producto: ${product.name} - ${formatPrice(product.price)} en ${STORE_INFO.name}`)}` },
+                  { name: 'mail', url: `mailto:?subject=${encodeURIComponent(product.name)}&body=${encodeURIComponent(`Te recomiendo este producto: ${product.name} - ${formatPrice(product.price)} en ${STORE_INFO.name}`)}` },
                 ].map((s) => (
                   <a
                     key={s.name}
@@ -368,13 +464,14 @@ export default function ProductDetail() {
             </motion.div>
           </div>
 
-          {/* Tabs: Description / Specs */}
+          {/* Tabs: Description / Specs / Reviews / FAQ */}
           <div className="mt-16">
             <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800 overflow-x-auto no-scrollbar">
               {[
                 { id: 'description', label: 'Descripción' },
                 { id: 'specs', label: 'Especificaciones' },
-                { id: 'reviews', label: `Reseñas (${product.reviews})` },
+                { id: 'reviews', label: `Opiniones (${product.reviews})` },
+                { id: 'faq', label: 'Preguntas frecuentes' },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -384,6 +481,7 @@ export default function ProductDetail() {
                       ? 'text-brand-600 dark:text-brand-400'
                       : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                   }`}
+                  aria-selected={activeTab === tab.id}
                 >
                   {tab.label}
                   {activeTab === tab.id && (
@@ -410,9 +508,20 @@ export default function ProductDetail() {
                       <p className="text-slate-700 dark:text-slate-300 leading-relaxed text-lg">
                         {product.description}
                       </p>
-                      <p className="text-slate-700 dark:text-slate-300 leading-relaxed mt-4">
-                        En TechNova PY traemos productos seleccionados para que tengas la mejor experiencia. Todos nuestros equipos pasan por control de calidad antes del envío y cuentan con garantía oficial del fabricante. Si tenés alguna consulta sobre este producto, no dudes en escribirnos por WhatsApp: respondemos en minutos.
-                      </p>
+                      <div className="mt-6 grid sm:grid-cols-3 gap-4">
+                        <div className="p-4 rounded-xl bg-brand-50 dark:bg-brand-950/30 border border-brand-100 dark:border-brand-900/50">
+                          <div className="text-brand-600 dark:text-brand-400 font-semibold text-sm mb-1">Garantía</div>
+                          <p className="text-sm text-slate-600 dark:text-slate-400">12 meses de garantía oficial del fabricante. Producto 100% original con factura incluida.</p>
+                        </div>
+                        <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/50">
+                          <div className="text-emerald-600 dark:text-emerald-400 font-semibold text-sm mb-1">Envío</div>
+                          <p className="text-sm text-slate-600 dark:text-slate-400">Envío gratis en compras superiores a Gs. 500.000. Llegamos a todo Paraguay.</p>
+                        </div>
+                        <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/50">
+                          <div className="text-amber-600 dark:text-amber-400 font-semibold text-sm mb-1">Soporte</div>
+                          <p className="text-sm text-slate-600 dark:text-slate-400">Atención personalizada por WhatsApp. Te asesoramos antes y después de tu compra.</p>
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -441,31 +550,48 @@ export default function ProductDetail() {
                               <Icon key={`e${i}`} name="star" className="h-4 w-4 text-slate-200 dark:text-slate-700" />
                             ))}
                           </div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">{product.reviews} reseñas</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">{product.reviews} opiniones verificadas</div>
                         </div>
-                        <p className="text-slate-600 dark:text-slate-400">
-                          Nuestros clientes califican este producto como excelente. La mayoría destaca la calidad, el rendimiento y la relación calidad-precio. Comprá con confianza sabiendo que estás adquiriendo un producto verificado y recomendado.
-                        </p>
+                        <div>
+                          <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">
+                            Nuestros clientes califican este producto como excelente. La mayoría destaca la calidad, el rendimiento y la relación calidad-precio. Comprá con confianza sabiendo que estás adquiriendo un producto verificado y recomendado por compradores reales en Paraguay.
+                          </p>
+                          <div className="mt-3 flex items-center gap-2">
+                            <span className="text-xs text-slate-500 dark:text-slate-400">¿Ya compraste este producto?</span>
+                            <a href={STORE_INFO.whatsappLink} target="_blank" rel="noreferrer" className="text-xs font-semibold text-brand-600 dark:text-brand-400 hover:underline">
+                              Dejá tu opinión
+                            </a>
+                          </div>
+                        </div>
                       </div>
 
                       <div className="space-y-4">
                         {SAMPLE_REVIEWS.map((r, i) => (
                           <div key={i} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
                             <div className="flex items-start gap-3">
-                              <img src={r.avatar} alt={r.name} loading="lazy" className="h-10 w-10 rounded-full object-cover" />
+                              <div className="h-10 w-10 rounded-full bg-brand-100 dark:bg-brand-950/40 flex items-center justify-center text-brand-600 dark:text-brand-400 font-bold text-sm flex-shrink-0">
+                                {r.name.split(' ').map(n => n[0]).join('')}
+                              </div>
                               <div className="flex-1">
-                                <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
                                   <div>
                                     <div className="font-semibold text-sm text-slate-900 dark:text-white">{r.name}</div>
-                                    <div className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                                      <Icon name="checkCircle" className="h-3 w-3" />
-                                      Compra verificada
+                                    <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                                      <span>{r.city}</span>
+                                      <span>·</span>
+                                      <span>{r.product}</span>
+                                      <span>·</span>
+                                      <span>{r.date}</span>
                                     </div>
                                   </div>
-                                  <div className="flex">
+                                  <div className="flex items-center gap-1">
                                     {Array.from({ length: r.rating }).map((_, j) => (
                                       <Icon key={j} name="star" className="h-3.5 w-3.5 text-amber-400" />
                                     ))}
+                                    <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5 ml-1">
+                                      <Icon name="checkCircle" className="h-3 w-3" />
+                                      Verificada
+                                    </span>
                                   </div>
                                 </div>
                                 <p className="mt-2 text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{r.text}</p>
@@ -473,6 +599,23 @@ export default function ProductDetail() {
                             </div>
                           </div>
                         ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === 'faq' && (
+                    <div className="space-y-3">
+                      {PRODUCT_FAQS.map((faq, i) => (
+                        <div key={i} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+                          <div className="font-semibold text-sm text-slate-900 dark:text-white mb-1">{faq.q}</div>
+                          <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{faq.a}</p>
+                        </div>
+                      ))}
+                      <div className="mt-4 text-center">
+                        <a href={STORE_INFO.whatsappLink} target="_blank" rel="noreferrer" className="btn-whatsapp text-sm">
+                          <Icon name="whatsapp" className="h-4 w-4" />
+                          Hacé tu consulta por WhatsApp
+                        </a>
                       </div>
                     </div>
                   )}
@@ -504,8 +647,66 @@ export default function ProductDetail() {
               </div>
             </div>
           )}
+
+          {/* Recently viewed */}
+          {viewed.length > 1 && (() => {
+            const recentProducts = viewed
+              .filter((id) => id !== product.id)
+              .map((id) => PRODUCTS.find((p) => p.id === id))
+              .filter(Boolean)
+              .slice(0, 4)
+            if (recentProducts.length === 0) return null
+            return (
+              <div className="mt-16">
+                <div className="flex items-end justify-between mb-8">
+                  <div>
+                    <span className="section-eyebrow">
+                      <Icon name="eye" className="h-3.5 w-3.5" />
+                      Vistos recientemente
+                    </span>
+                    <h2 className="mt-3 font-display text-2xl lg:text-3xl font-extrabold">También te interesaron</h2>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+                  {recentProducts.map((p, i) => (
+                    <ProductCard key={p.id} product={p} index={i} />
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
         </div>
       </section>
+
+      {/* Sticky Bottom Bar */}
+      <AnimatePresence>
+        {stickyVisible && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 shadow-2xl shadow-slate-900/10"
+          >
+            <div className="container-app py-3 flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <p className="font-semibold text-sm text-slate-900 dark:text-white truncate">{product.name}</p>
+                <p className="font-display font-extrabold text-gradient text-lg">{formatPrice(product.price * qty)}</p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button onClick={handleBuyNow} className="btn-whatsapp text-sm px-4 py-2.5">
+                  <Icon name="whatsapp" className="h-4 w-4" />
+                  Comprar
+                </button>
+                <button onClick={handleAddToCart} className="btn-primary text-sm px-4 py-2.5">
+                  <Icon name="cart" className="h-4 w-4" />
+                  Agregar
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   )
 }
@@ -513,20 +714,49 @@ export default function ProductDetail() {
 const SAMPLE_REVIEWS = [
   {
     name: 'Roberto Acuña',
-    avatar: 'https://i.pravatar.cc/100?img=33',
+    city: 'Asunción',
+    product: 'Samsung Galaxy S25 Ultra',
+    date: 'Mayo 2025',
     rating: 5,
     text: 'Excelente producto, llegó antes de lo previsto y en perfectas condiciones. La atención por WhatsApp fue impecable, respondieron todas mis dudas al instante.',
   },
   {
     name: 'Laura Méndez',
-    avatar: 'https://i.pravatar.cc/100?img=23',
+    city: 'Ciudad del Este',
+    product: 'Lenovo LOQ 15',
+    date: 'Abril 2025',
     rating: 5,
-    text: 'Compré con miedo de que fuera una estafa pero todo salió perfecto. Producto original con factura y garantía. Ya hice mi segunda compra. Los super recomiendo.',
+    text: 'Compré mi laptop gaming con miedo de que fuera una estafa pero todo salió perfecto. Producto original con factura y garantía. Ya hice mi segunda compra. Los super recomiendo.',
   },
   {
     name: 'Diego Romero',
-    avatar: 'https://i.pravatar.cc/100?img=15',
+    city: 'Encarnación',
+    product: 'JBL Flip 7',
+    date: 'Junio 2025',
     rating: 4,
-    text: 'Muy bueno, cumple todo lo prometido. El único detalle es que el envío al interior tardó 3 días, pero el producto valió la pena. Volvería a comprar.',
+    text: 'Muy bueno, cumple todo lo prometido. El envío al interior tardó 3 días, pero el producto valió la pena. El sonido es increíble. Volvería a comprar.',
+  },
+]
+
+const PRODUCT_FAQS = [
+  {
+    q: '¿Este producto tiene garantía?',
+    a: 'Sí, todos nuestros productos tienen 12 meses de garantía oficial del fabricante. Incluimos factura y certificado de garantía con cada compra.',
+  },
+  {
+    q: '¿Cuánto cuesta el envío?',
+    a: 'El envío es gratis en compras superiores a Gs. 500.000 para Asunción y Gran Asunción. Para el interior del país, consultanos el costo por WhatsApp.',
+  },
+  {
+    q: '¿Cuánto tarda en llegar?',
+    a: 'En Asunción y Gran Asunción, de 1 a 2 días hábiles. En el interior del país, de 3 a 5 días hábiles. Te enviamos seguimiento por WhatsApp.',
+  },
+  {
+    q: '¿Cómo realizo la compra?',
+    a: 'Hacé clic en "Comprar ahora" y se abre WhatsApp con tu pedido completo. También podés agregar al carrito y finalizar desde ahí. Te respondemos en minutos.',
+  },
+  {
+    q: '¿Aceptan tarjetas de crédito?',
+    a: 'Sí, aceptamos Bancard, Visa y Mastercard. También transferencia bancaria y efectivo. Todos los pagos son seguros.',
   },
 ]

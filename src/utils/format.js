@@ -1,4 +1,4 @@
-import { WHATSAPP_NUMBER } from '../data/products'
+import { WHATSAPP_NUMBER, STORE_INFO } from '../data/products'
 
 // Formato de moneda paraguaya (Guaraníes)
 export function formatPrice(value) {
@@ -13,25 +13,26 @@ export function formatPriceShort(value) {
   return `Gs. ${value}`
 }
 
-// Construye el mensaje de WhatsApp con el carrito
+// Construye el mensaje de WhatsApp Premium con el carrito completo
 export function buildWhatsappMessage(cart, totals) {
   if (!cart || cart.length === 0) return null
 
   const lines = []
-  lines.push('Hola, quiero realizar el siguiente pedido:')
+  lines.push('Hola, deseo realizar una compra.')
   lines.push('')
-  lines.push('🛒 PRODUCTOS:')
+  lines.push('📦 PRODUCTOS:')
   lines.push('')
 
   cart.forEach((item, idx) => {
     lines.push(`*${idx + 1}. ${item.name}*`)
+    lines.push(`   • Marca: ${item.brand || '—'}`)
+    lines.push(`   • Precio unitario: ${formatPrice(item.price)}`)
     lines.push(`   • Cantidad: ${item.qty}`)
-    lines.push(`   • Precio: ${formatPrice(item.price)}`)
     lines.push(`   • Subtotal: ${formatPrice(item.price * item.qty)}`)
     lines.push('')
   })
 
-  lines.push('──────────────')
+  lines.push('─────────────────')
   lines.push(`💰 Subtotal: ${formatPrice(totals.subtotal)}`)
   if (totals.shipping > 0) {
     lines.push(`🚚 Envío: ${formatPrice(totals.shipping)}`)
@@ -39,9 +40,14 @@ export function buildWhatsappMessage(cart, totals) {
     lines.push(`🚚 Envío: ¡GRATIS!`)
   }
   lines.push(`💵 *TOTAL: ${formatPrice(totals.total)}*`)
-  lines.push('──────────────')
+  lines.push('─────────────────')
   lines.push('')
-  lines.push('Por favor, deseo confirmar mi compra.')
+  lines.push('📍 Ciudad: [Ingrese su ciudad]')
+  lines.push('💳 Método de pago: Transferencia / Efectivo / Tarjeta')
+  lines.push('')
+  lines.push('Observaciones:')
+  lines.push('')
+  lines.push('Gracias.')
 
   return lines.join('\n')
 }
@@ -53,35 +59,40 @@ export function buildWhatsappUrl(cart, totals) {
   return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`
 }
 
-// Mensaje para un solo producto (botón Comprar Ahora en detalle)
+// Mensaje premium para un solo producto
 export function buildSingleProductWhatsapp(product, qty = 1) {
   const lines = []
-  lines.push('Hola, quiero realizar el siguiente pedido:')
+  lines.push('Hola, deseo realizar una compra.')
   lines.push('')
-  lines.push('🛒 PRODUCTOS:')
+  lines.push('📦 PRODUCTO:')
+  lines.push(`• ${product.name}`)
+  lines.push(`• Marca: ${product.brand}`)
   lines.push('')
-  lines.push(`*1. ${product.name}*`)
-  lines.push(`   • Cantidad: ${qty}`)
-  lines.push(`   • Precio: ${formatPrice(product.price)}`)
-  lines.push(`   • Subtotal: ${formatPrice(product.price * qty)}`)
-  lines.push('')
-  lines.push('──────────────')
-  const total = product.price * qty
-  const shipping = total < 500000 ? 30000 : 0
-  lines.push(`💰 Subtotal: ${formatPrice(total)}`)
-  if (shipping > 0) {
-    lines.push(`🚚 Envío: ${formatPrice(shipping)}`)
-  } else {
-    lines.push(`🚚 Envío: ¡GRATIS!`)
+  lines.push('💰 PRECIO:')
+  lines.push(`• Unitario: ${formatPrice(product.price)}`)
+  lines.push(`• Cantidad: ${qty}`)
+  lines.push(`• Subtotal: ${formatPrice(product.price * qty)}`)
+  if (product.oldPrice) {
+    const discount = Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100)
+    lines.push(`• Ahorro: ${formatPrice(product.oldPrice - product.price)} (${discount}% OFF)`)
   }
-  lines.push(`💵 *TOTAL: ${formatPrice(total + shipping)}*`)
-  lines.push('──────────────')
   lines.push('')
-  lines.push('Por favor, deseo confirmar mi compra.')
+  const total = product.price * qty
+  const shipping = total < STORE_INFO.freeShippingMin ? 30000 : 0
+  lines.push(`🚚 Envío: ${shipping === 0 ? 'GRATIS' : formatPrice(shipping)}`)
+  lines.push(`💵 *TOTAL: ${formatPrice(total + shipping)}*`)
+  lines.push('')
+  lines.push('📍 Ciudad: [Ingrese su ciudad]')
+  lines.push('💳 Método de pago: Transferencia / Efectivo / Tarjeta')
+  lines.push('')
+  lines.push('Observaciones:')
+  lines.push('')
+  lines.push('Gracias.')
+
   return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(lines.join('\n'))}`
 }
 
-// Slugificación simple por si hace falta
+// Slugificación simple
 export function slugify(text) {
   return text
     .toString()

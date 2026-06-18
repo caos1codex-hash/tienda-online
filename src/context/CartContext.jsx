@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, useCallback } from 'react'
+import { STORE_INFO } from '../data/products'
 
 const CartContext = createContext(null)
 
@@ -92,7 +93,7 @@ export function CartProvider({ children }) {
   const totals = useMemo(() => {
     const count = cart.reduce((s, i) => s + i.qty, 0)
     const subtotal = cart.reduce((s, i) => s + i.qty * i.price, 0)
-    const shipping = subtotal > 0 && subtotal < 500000 ? 30000 : 0
+    const shipping = subtotal > 0 && subtotal < STORE_INFO.freeShippingMin ? 30000 : 0
     const total = subtotal + shipping
     return { count, subtotal, shipping, total }
   }, [cart])
